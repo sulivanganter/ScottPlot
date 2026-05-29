@@ -1,0 +1,65 @@
+﻿@page "/"
+@using ScottPlot
+@using ScottPlot.Blazor
+@using ScottPlot.DataSources
+@implements IDisposable
+
+<h1>ScottPlot 5 in Blazor — Dynamic SignalXY</h1>
+
+<BlazorPlotGL @ref=BlazorPlot Style="width: 600px; height: 600px;" />
+
+@code {
+
+    BlazorPlotGL BlazorPlot { get; set; } = new();
+    ScottPlot.Plottables.Crosshair Crosshair = new();
+    SignalXYSourceDynamic DataSource = new();
+    Timer? LiveTimer;
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        // seed with sample data (5 × 1M points with gaps)
+        for (int i = 0; i < 5; i++)
+        {
+            double[] xs = Generate.Consecutive(1_000_000, first: 2_000 * i);
+            double[] ys = Generate.RandomSample(1_000_000);
+            DataSource.AddRange(xs, ys);
+        }
+
+        var sig = BlazorPlot.Plot.Add.SignalXY(DataSource);
+        DataSource.MarkerStyle = sig.MarkerStyle;
+        DataSource.DirectDrawMarkerSize = 5;
+        BlazorPlot.Plot.Add.Plottable(Crosshair);
+
+        BlazorPlot.MouseMoved += (object? sender, Pixel px) =>
+        {
+            Crosshair.Position = BlazorPlot.Plot.GetCoordinates(px);
+            BlazorPlot.Refresh();
+        };
+
+        // live data: append 10K points every 200 ms
+        LiveTimer = new Timer(_ =>
+        {
+            double first = DataSource.Count > 0
+                ? DataSource.Count
+                : 0;
+
+            double[] newXs = Generate.Consecutive(10_000, first: first);
+            double[] newYs = Generate.RandomSample(10_000);
+            DataSource.AddRange(newXs, newYs);
+
+            InvokeAsync(() =>
+            {
+                //BlazorPlot.Plot.Axes.AutoScale();
+                BlazorPlot.Refresh();
+            });
+        }, null, 1_000, 200);
+    }
+
+    public void Dispose()
+    {
+        LiveTimer?.Dispose();
+    }
+}
